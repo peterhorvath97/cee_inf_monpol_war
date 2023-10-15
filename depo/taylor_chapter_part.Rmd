@@ -1,0 +1,379 @@
+---
+title: "Taylor Rules and Monetary Policy Stance"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      error = FALSE,
+                      message = FALSE)
+```
+
+```{r, data prep}
+#data prep
+library(tidyverse)
+library(fredr)
+library(lubridate)
+
+
+#data issues
+df_all <- read_rds("df_all.rds")
+month_quarter <- tibble(month = 1:12) %>% 
+  mutate(quarter = case_when(month %in% 1:3 ~ 1,
+                             month %in% 4:6 ~ 2,
+                             month %in% 7:9 ~ 3,
+                             month %in% 10:12 ~ 4))
+
+data <-df_all %>% group_by(iso2c) %>% nest() %>% 
+  mutate(data = case_when(iso2c %in% c("BG", "CZ", "HU", "PL", "RO") ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Policy rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c %in% c("EE", "LV", "SI", "SK") ~ 
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Short term interest rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "LT" ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Treasury rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "Global" ~
+                            map(data, ~filter(.x, description %in% c("Energy Price Index", "Geopolitical Risk Index")) %>% mutate(freq = "M"))
+  ) 
+  ) %>% 
+  mutate(data = map(data, ~mutate(.x, year = year(date),
+                                  month = month(date)) %>% 
+                      left_join(month_quarter, by = "month") %>% 
+                      group_by(indicator, quarter, year) %>% 
+                      mutate(val = mean(value),
+                             name = case_when(description == "CPI" ~ "pi", 
+                                              description == "GDP" ~ "y",
+                                              description == "Policy rate" ~ "r",
+                                              description == "Short term interest rate" ~ "r",
+                                              description == "Treasury rate" ~ "r",
+                                              description == "Real Effective Exchange Rate" ~ "e",
+                                              description == "Wages and salaries, Index, B-S" ~ "w",
+                                              description == "Energy Price Index" ~ "gep",
+                                              description == "Geopolitical Risk Index" ~  "gpr")) %>% 
+                      ungroup() %>% 
+                      distinct(indicator, quarter, year, .keep_all = TRUE) %>% 
+                      dplyr::select(date, val, name) %>% 
+                      spread(name, val) %>% 
+                      drop_na()
+  ))
+
+
+data <- data %>% filter(iso2c != "Global") %>% 
+  unnest(data) %>% ungroup()
+
+data <- data %>% mutate(year = year(date)) %>% 
+  left_join(data %>% mutate(year = year(date)) %>% 
+              group_by(iso2c, year) %>% 
+              summarize(mean_y = mean(y)) %>% 
+              filter(year == 2010) %>% ungroup(),
+            by = "iso2c") %>% 
+  mutate(y = 100*y/mean_y) %>% 
+  dplyr::select(-starts_with('year'), -mean_y) %>% 
+  rename(country = iso2c) %>% group_by(country) %>% 
+  #  mutate(y = y - dplyr::lag(y), 
+  #         pi = pi - dplyr::lag(pi), 
+  #         e = e - dplyr::lag(e)) %>% 
+  ungroup() %>% 
+  drop_na() %>% 
+  dplyr::select(country, date, y, pi, r, e)
+
+```
+
+In this section we assess the stance of monetary policymakers in the Central Eastern European region. One of the most common methods for such an analysis is comparing interest rates to what a policy rule, such as the Taylor rule would suggest. This way, we get a clear picture on how monetary policy is actually conducted in each country compared to what the key economic aggregates would suggest. While the Taylor rule is a simple tool for assessing monetary policy, the choice of data and estimation strategy is by no means trivial. 
+
+In terms of data, there are two considerations to be made. One is the choice of measurement of the interest rates, while the other choice is how the inflation and output gaps should be calculated. As there is no one standardized measurement available for short term interest rates across the countries - in part due to some CEE countries having joined the Eurozone. Therefore, in the study, we will be using the official policy rate published in the IMF IFS database wherever possible (Bulgaria, Czechia, Hungary, Poland, and Romania). As for countries where this was not available (Estonia, Latvia, Slovakia and Slovenia), we use the Short Term Interest Rate published by the OECD. The estimated output and inflation gaps can be seen in the graphs below.
+
+```{r, gaps}
+#create gaps
+library(mFilter)
+library(hpfilter)
+
+
+data <- data %>% mutate(pi = pi - dplyr::lag(pi, n = 4)) %>% 
+  mutate(pi_targ = case_when(country == "BG" ~ 0,
+                             country %in% c("CZ", "EE", "LT", "LV", "SI", "SK") ~ 2,
+                             country == "HU" ~ 3,
+                             country %in%  c("PL", "RO") ~ 2.5
+                             )) %>% 
+  filter(country != "LT") %>%
+  group_by(country) %>% 
+  mutate(pi_gap = pi-pi_targ,
+         y_gap = hpfilter(y, freq = 1600, type = "lambda")$cycle,
+         e_gap = hpfilter(e, freq = 1600, type = "lambda")$cycle) %>% 
+  select(-pi_targ, -e, -y) %>% 
+  drop_na() %>% 
+  slice(5:n()) %>% 
+  #slice(1:n()-1) %>% 
+  ungroup() %>% 
+  rename(pi2 = pi,
+         pi = pi_gap,
+         y = y_gap,
+         e = e_gap)
+
+data %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y =pi)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  ggtitle("Inflation Gap") +
+  labs(y = "", 
+       x = "")
+
+data %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y =y)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  ggtitle("Output Gap") +
+  labs(y = "",
+       x = "")
+
+```
+
+A common way of estimating the output gap is using the Hodrick-Prescott filter as proposed in Hodrick, Prescott (1997). However, in recent years this methodology has been criticzed for introducing spurious dynamics to the filterd data, as well as for the end-point problem (e.g.: Hamilton (2017)). A simple solution to this is using the so-called "one-sided" HP filter as opposed to its (original) two-sided variant. This way filtered values at time t are estimated using values of a series only up to time t, and no values past it. In essence, this eliminates the effect of hindsight on the filtered values, thus resulting in more reasonable dynamics as well as no end-point problem. The inflation gap should be easier to grasp, as it can be calculated as the difference between year-on-year inflation rates, and the inflation target of the central bank, however as the latter are not historically available, the inflation gap will be calculated using the one-sided HP filter as well.
+
+In terms of estimating the Taylor rules, it should be considered wether the original specification as proposed by Taylor (1993) i.e.
+
+r = 2 + pi + 0.5*y + 0.5(pi-pi_target)
+
+should be used, a similar rule estimated for each country, or perhaps alternative specification, such as augmenting the equation with interest rate smoothing or an exchange rate term. While these latter augmentations seem desirable as on one hand, central banks tend to adjust interest rate sluggishly, while on the other hand, exchange rates could matter for monetary aurthorities of small open economies, the former results in overfitting the model, while as for the latter case, including exchange rates seems not to have a major impact on implied interest rates. For this reason we will rely on the original specification as proposed by Taylor (1993), as well as its estimate for each country in order to assess montetary policy. 
+
+```{r, estimate taylor rules}
+
+data_taylor2 <- data %>% 
+  group_by(country) %>% 
+  mutate(taylor_simple = 2 + pi2 + 0.5*pi + 0.5*y) %>%
+  group_by(country) %>% nest() %>% 
+  mutate(mod = map(data, ~lm(r ~  pi2 + pi + y , data = .x)),
+         mod2 = map(data, ~lm(r ~ pi2 + pi + y + e, data = .x)), 
+         
+         mod_smooth = map(data, ~lm(r ~ dplyr::lag(r) + pi2 + pi + y , data = .x)),
+         mod2_smooth = map(data, ~lm(r ~ dplyr::lag(r) + pi2 + pi + y + e, data = .x)), 
+         
+         taylor_emp = map(mod, ~.x$fitted),
+         taylor_emp_e = map(mod2, ~.x$fitted),
+         #taylor_emp = map(taylor_emp, ~c(NA, .x)),
+         #taylor_emp_e = map(taylor_emp_e, ~c(NA, .x)),
+         
+         taylor_emp_smooth = map(mod_smooth, ~.x$fitted),
+         taylor_emp_e_smooth = map(mod2_smooth, ~.x$fitted),
+         taylor_emp_smooth = map(taylor_emp_smooth, ~c(NA, .x)),
+         taylor_emp_e_smooth = map(taylor_emp_e_smooth, ~c(NA, .x)),
+         
+         data = map(.x = data, .y = taylor_emp, 
+                    ~mutate(.x, taylor_emp = unlist(.y))),
+         data = map(.x = data, .y = taylor_emp_e,
+                    ~mutate(.x, taylor_emp_e = unlist(.y))), 
+         
+         data = map(.x = data, .y = taylor_emp_smooth, 
+                    ~mutate(.x, taylor_emp_smooth = unlist(.y))),
+         data = map(.x = data, .y = taylor_emp_e_smooth,
+                    ~mutate(.x, taylor_emp_e_smooth = unlist(.y))))
+
+data_taylor <- data_taylor2 %>%
+  dplyr::select(country, data) %>% 
+  unnest(data) 
+
+```
+
+First, let us compare the interest rates to the implied interest rates as proposed by Taylor (1993). From comparing the actual and implied interest rates in we can conclude that while there is clearly strong co-movement, this Taylor rule tends to overestimate the optimal level of interest rate by upwards of even 30 percentage points in 2022. While the reaction of Central Banks to the 2022 inflation shock was indeed sluggish, it is unreasonable to believe that interest rates were set on average close to 20 percent lower than what macroeconomic data suggests. 
+
+```{r, Taylor simple time series}
+data_taylor %>% 
+  gather(key = "key", value = "value", r, taylor_simple) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_simple" ~ "Simple Taylor Rule")) %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest rate vs. Simple Taylor Rule - Time series graph") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+```
+
+Comparing the whole period averages, we can see that the long run interest rate for all countries except for Hungary and Romania is considerably higher than the actual long run average. While we can clearly see that the long run optimal interest rates for the CEE countries differs significantly from 2%, this formula overestimates this due to assuming a stronger reaction from central banks to inflation and GDP shocks, than their true values. This gives us reason to believe that estimating separate Taylor rules for each country using empirical methods should be required in assessing monetary policy stance.
+
+```{r, taylor simple averages}
+data_taylor %>% 
+  gather(key = "key", value = "value", r, taylor_simple) %>% 
+  group_by(key, country) %>% 
+  summarize(mean = mean(value)) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_simple" ~ "Simple Taylor Rule")) %>% 
+  ggplot(aes(x = key, y = mean, fill = key)) +
+  geom_col() +
+  facet_wrap(~country, scales = "free") +
+  scale_fill_brewer(palette = "Dark2") +
+  ggtitle("Interest rate vs. Simple Taylor Rule - Time averages") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+```
+
+```{r, taylor simple deviation}
+data_taylor %>% 
+  mutate(dev = r - taylor_simple) %>% 
+  filter(year(date) == 2022) %>% 
+  group_by(country) %>% 
+  summarize(mean = mean(dev)) %>% 
+  arrange(desc(mean)) %>% 
+  ggplot(aes(x = reorder(country, -mean), y = mean, fill = country)) +
+  geom_col() +
+  coord_flip() +
+  ggtitle("Deviation from Simple Taylor Rule interest rate in 2022") +
+  labs(y = "",
+       x = "") +
+  theme(legend.position = "none")
+```
+
+
+
+The estimation of the true reaction coefficients of central banks, and thus estimating the Empirical Taylor Rule Implied rates for each country is done using simple OLS. While endogeneity is a clear problem which can cause inconsistent estimates, Carvalho et. al. (2021) argue that OLS is correct for estimating Taylor Rules, as valid instruments for the regressors are nearly impossible to find and results OLS estimates can outperform that of the IV model.
+
+
+```{r, Taylor empirical time series}
+data_taylor %>% 
+  gather(key = "key", value = "value", r, taylor_emp) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_emp" ~ "Empirical Taylor Rule")) %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest rate vs. Empirical Taylor Rule - Time series graph") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+```
+
+We can see from the time series graphs above, that the Empirical Taylor Rules produce implied optimum rates that are much closer in magnitude to the actual interest rates, while narurally also keeping strong co-movement with them. By design of the estimation, the estimated long run average interest rates also align with the long run averages of the actual series.
+
+```{r, taylor empirical averages}
+data_taylor %>% 
+  gather(key = "key", value = "value", r, taylor_emp) %>% 
+  group_by(key, country) %>% 
+  summarize(mean = mean(value)) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_emp" ~ "Empirical Taylor Rule")) %>% 
+  ggplot(aes(x = key, y = mean, fill = key)) +
+  geom_col() +
+  facet_wrap(~country, scales = "free") +
+  scale_fill_brewer(palette = "Dark2") +
+  ggtitle("Interest rate vs. Empirical Taylor Rule - Time averages") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+```
+
+Comparing the average deviation from the implied optimum interest rates in 2022 also produces more credible estimates. Not accounting for Romania, the majority of the countries were less than 5 percentage points lower than the optimum with Poland and Czechia being close to conducting "perfect" monetary policy.
+
+```{r, taylor Empirical deviation}
+data_taylor %>% 
+  mutate(dev = r - taylor_emp) %>% 
+  filter(year(date) == 2022) %>% 
+  group_by(country) %>% 
+  summarize(mean = mean(dev)) %>% 
+  arrange(desc(mean)) %>% 
+  ggplot(aes(x = reorder(country, -mean), y = mean, fill = country)) +
+  geom_col() +
+  coord_flip() +
+  ggtitle("Deviation from Empirical Taylor Rule interest rate in 2022") +
+  labs(y = "",
+       x = "") +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+regress_tabla <- function(modell, ncol, colnames){
+  seged <- matrix(ncol = ncol, nrow = nrow(data_taylor2))
+  for(i in 1:nrow(data_taylor2)){
+    seged[i,] <-  modell[[i]] %>% broom::tidy() %>% 
+      select(estimate) %>% t()  
+    
+  }
+  seged <- cbind(data_taylor2$country, seged)
+  seged
+  colnames(seged) <- colnames
+  as_tibble(seged)
+}
+
+
+
+
+regress_tabla(data_taylor2$mod, 4, colnames = c("Country", "Intercept", "Inflation", "Inflation Gap", "Output Gap")) %>% knitr::kable()
+```
+
+
+
+## Resources:
+https://www.nber.org/system/files/working_papers/w23429/w23429.pdf
+https://www0.gsb.columbia.edu/faculty/rhodrick/prescott-hodrick1997.pdf
+https://cran.r-project.org/web/packages/hpfilter/readme/README.html
+
+
+https://web.stanford.edu/~johntayl/Papers/Discretion.PDF
+https://www.sciencedirect.com/science/article/abs/pii/S0304393221001203
+
+
+
+
+## Appendix
+
+### Interest rate smoothing
+
+```{r, interest rate smoothing}
+data_taylor %>% 
+  gather(key = "key", value = "value", r, taylor_emp_smooth) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_emp_smooth" ~ "Empirical Rule with Interest Rate Smoothing")) %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest Rate Smoothing") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+
+```
+
+
+### Exchange rate
+```{r, exchange rate}
+data_taylor %>% 
+  gather(key = "key", value = "value", taylor_emp, taylor_emp_e) %>% 
+  mutate(key = case_when(key == "taylor_emp" ~ "Empirical Taylor Rule",
+                         key == "taylor_emp_e" ~ "Empirical Rule with Exchange Rate")) %>% 
+  filter(year(date) >= 2010) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Exchange Rate") +
+  theme(legend.position = "bottom") +
+  labs(y = "",
+       x = "") +
+  theme(legend.title = element_blank())
+
+
+```
+

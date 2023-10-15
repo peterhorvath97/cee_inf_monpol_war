@@ -1,0 +1,261 @@
+---
+title: "Taylor Rules"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+
+library(tidyverse)
+library(fredr)
+library(lubridate)
+
+#data issues
+df_all <- read_rds("df_all.rds")
+month_quarter <- tibble(month = 1:12) %>% 
+  mutate(quarter = case_when(month %in% 1:3 ~ 1,
+                             month %in% 4:6 ~ 2,
+                             month %in% 7:9 ~ 3,
+                             month %in% 10:12 ~ 4))
+
+data <-df_all %>% group_by(iso2c) %>% nest() %>% 
+  mutate(data = case_when(iso2c %in% c("BG", "CZ", "HU", "PL", "RO") ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Policy rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c %in% c("EE", "LV", "SI", "SK") ~ 
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Short term interest rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "LT" ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Treasury rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "Global" ~
+                            map(data, ~filter(.x, description %in% c("Energy Price Index", "Geopolitical Risk Index")) %>% mutate(freq = "M"))
+  ) 
+  ) %>% 
+  mutate(data = map(data, ~mutate(.x, year = year(date),
+                                  month = month(date)) %>% 
+                      left_join(month_quarter, by = "month") %>% 
+                      group_by(indicator, quarter, year) %>% 
+                      mutate(val = mean(value),
+                             name = case_when(description == "CPI" ~ "pi", 
+                                              description == "GDP" ~ "y",
+                                              description == "Policy rate" ~ "r",
+                                              description == "Short term interest rate" ~ "r",
+                                              description == "Treasury rate" ~ "r",
+                                              description == "Real Effective Exchange Rate" ~ "e",
+                                              description == "Wages and salaries, Index, B-S" ~ "w",
+                                              description == "Energy Price Index" ~ "gep",
+                                              description == "Geopolitical Risk Index" ~  "gpr")) %>% 
+                      ungroup() %>% 
+                      distinct(indicator, quarter, year, .keep_all = TRUE) %>% 
+                      dplyr::select(date, val, name) %>% 
+                      spread(name, val) %>% 
+                      drop_na()
+  ))
+
+
+data <- data %>% filter(iso2c != "Global") %>% 
+  unnest(data) %>% ungroup()
+
+data <- data %>% mutate(year = year(date)) %>% 
+  left_join(data %>% mutate(year = year(date)) %>% 
+              group_by(iso2c, year) %>% 
+              summarize(mean_y = mean(y)) %>% 
+              filter(year == 2010) %>% ungroup(),
+            by = "iso2c") %>% 
+  mutate(y = 100*y/mean_y) %>% 
+  dplyr::select(-starts_with('year'), -mean_y) %>% 
+  rename(country = iso2c) %>% group_by(country) %>% 
+  #  mutate(y = y - dplyr::lag(y), 
+  #         pi = pi - dplyr::lag(pi), 
+  #         e = e - dplyr::lag(e)) %>% 
+  ungroup() %>% 
+  drop_na() %>% 
+  dplyr::select(country, date, y, pi, r, e)
+
+#create gaps
+library(mFilter)
+
+data <- data %>% mutate(pi = pi - dplyr::lag(pi, n = 4)) %>% 
+  mutate(pi_targ = case_when(country == "BG" ~ 0,
+                             country %in% c("CZ", "EE", "LT", "LV", "SI", "SK") ~ 2,
+                             country == "HU" ~ 3,
+                             country %in%  c("PL", "RO") ~ 2.5
+                             )) %>% 
+  filter(country != "LT") %>%
+  group_by(country) %>% 
+  mutate(pi_gap = pi-pi_targ,
+         y_gap = hpfilter(y, freq = 1600, type = "lambda")$cycle,
+         e_gap = hpfilter(e, freq = 1600, type = "lambda")$cycle) %>% 
+  select(-pi, -pi_targ, -e, -y) %>% 
+  drop_na() %>% 
+  slice(5:n()) %>% 
+  #slice(1:n()-1) %>% 
+  ungroup() %>% 
+  rename(pi = pi_gap,
+         y = y_gap,
+         e = e_gap)
+
+data %>% 
+  ggplot(aes(x = date, y =pi)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  ggtitle("Inflation Gap")
+
+data %>% 
+  ggplot(aes(x = date, y =y)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  ggtitle("Output Gap")
+
+
+data_taylor <- data %>% 
+  group_by(country) %>% 
+  mutate(taylor_simple = 2 + 0.5*dplyr::lag(pi) + 0.5*dplyr::lag(y)) %>%
+  group_by(country) %>% nest() %>% 
+  mutate(mod = map(data, ~lm(r ~ -1 + dplyr::lag(pi) + dplyr::lag(y) , data = .x)),
+         mod2 = map(data, ~lm(r ~ -1 + dplyr::lag(pi) + dplyr::lag(y) + dplyr::lag(e), data = .x)), 
+         
+         mod_smooth = map(data, ~lm(r ~ -1 + dplyr::lag(r) + dplyr::lag(pi) + dplyr::lag(y) , data = .x)),
+         mod2_smooth = map(data, ~lm(r ~ -1 + dplyr::lag(r) + dplyr::lag(pi) + dplyr::lag(y) + dplyr::lag(e), data = .x)), 
+         
+         taylor_emp = map(mod, ~.x$fitted),
+         taylor_emp_e = map(mod2, ~.x$fitted),
+         taylor_emp = map(taylor_emp, ~c(NA, .x)),
+         taylor_emp_e = map(taylor_emp_e, ~c(NA, .x)),
+         
+         taylor_emp_smooth = map(mod_smooth, ~.x$fitted),
+         taylor_emp_e_smooth = map(mod2_smooth, ~.x$fitted),
+         taylor_emp_smooth = map(taylor_emp_smooth, ~c(NA, .x)),
+         taylor_emp_e_smooth = map(taylor_emp_e_smooth, ~c(NA, .x)),
+         
+         data = map(.x = data, .y = taylor_emp, 
+                    ~mutate(.x, taylor_emp = unlist(.y))),
+         data = map(.x = data, .y = taylor_emp_e,
+                    ~mutate(.x, taylor_emp_e = unlist(.y))), 
+         
+         data = map(.x = data, .y = taylor_emp_smooth, 
+                    ~mutate(.x, taylor_emp_smooth = unlist(.y))),
+         data = map(.x = data, .y = taylor_emp_e_smooth,
+                    ~mutate(.x, taylor_emp_e_smooth = unlist(.y)))) %>%
+  dplyr::select(country, data) %>% 
+  unnest(data) 
+
+data_taylor %>% 
+  gather(key = "key", value = "value", r, pi, y, e, taylor_simple, taylor_emp, taylor_emp_e,
+         taylor_emp_smooth, taylor_emp_e_smooth) %>% 
+  filter(key %in% c("r", "taylor_simple", "taylor_emp", 
+                    "taylor_emp_smooth")) %>% 
+  mutate(key = case_when(key == "r" ~ "Interest rate",
+                         key == "taylor_simple" ~ "Simple rule",
+                         key == "taylor_emp" ~ "Empirical rule",
+                         key == "taylor_emp_smooth" ~ "Empirical with IR smoothing")) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest rate and Taylor rules - base comparison") +
+  theme(legend.position = "bottom")
+
+
+data_taylor %>% 
+  gather(key = "key", value = "value", r, pi, y, e, taylor_simple, taylor_emp, taylor_emp_e,
+         taylor_emp_smooth, taylor_emp_e_smooth) %>% 
+  filter(key %in% c("taylor_emp", "taylor_emp_e", 
+                    "taylor_emp_smooth", "taylor_emp_e_smooth")) %>% 
+  mutate(key = case_when(key == "taylor_emp" ~ "Empirical rule",
+                         key == "taylor_emp_e" ~ "Empirical with exchange rate",
+                         key == "taylor_emp_smooth" ~ "Empirical with IR smoothing",
+                         key == "taylor_emp_e_smooth" ~ "Empirical with exchange rate and IR smoothing")) %>% 
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest rate and Taylor rules - Exchange rate vs no exchange rate") +
+  theme(legend.position = "bottom")
+
+#function buliding
+
+pdata <- data_taylor %>% 
+  dplyr::select(country, date, y, pi, r, e) %>% 
+  ungroup() %>% 
+  mutate(r_county = lm(r ~ -1 + country, data = data_taylor) %>% fitted(),
+         r_demean = lm(r ~ -1 + country, data = data_taylor) %>% resid(),
+         
+         e_county = lm(e ~ -1 + country, data = data_taylor) %>% fitted(),
+         e_demean = lm(e ~ -1 + country, data = data_taylor) %>% resid(),
+         
+         y_county = lm(y ~ -1 + country, data = data_taylor) %>% fitted(),
+         y_demean = lm(y ~ -1 + country, data = data_taylor) %>% resid(),
+         
+         pi_county = lm(pi ~ -1 + country, data = data_taylor) %>% fitted(),
+         pi_demean = lm(pi ~ -1 + country, data = data_taylor) %>% resid() ) %>% 
+  group_by(country) %>% 
+  mutate(rlag = dplyr::lag(r_demean),
+         ylag = dplyr::lag(y_demean),
+         pilag = dplyr::lag(pi_demean),
+         elag = dplyr::lag(e_demean)) %>% 
+  ungroup()
+
+
+pdata <- pdata %>% group_by(country) %>% 
+  slice(2:n()) %>% 
+  ungroup() %>% 
+  mutate(r = r_demean + r_county,
+         
+         taylor_panel = pdata %>% lm(formula = r_demean ~ -1 + pilag + ylag) %>% 
+           fitted() + r_county,
+         taylor_panel_e = pdata %>% lm(formula = r_demean ~ -1 + pilag + ylag + elag) %>% 
+           fitted() + r_county,
+         
+         taylor_panel_smooth = pdata %>% lm(formula = r_demean ~ -1 + rlag + pilag + ylag) %>% 
+           fitted() + r_county,
+         taylor_panel_e_smooth = pdata %>% lm(formula = r_demean ~ -1 + rlag + pilag + ylag + elag) %>% 
+           fitted() + r_county
+         
+         ) %>% 
+  mutate(taylor_simple = data_taylor %>% group_by(country) %>% 
+           slice(2:n()) %>% ungroup() %>% 
+  pull(taylor_simple)) 
+  
+  
+  pdata %>% 
+  gather(key = "key", value = "value", r, taylor_panel, taylor_panel_e,
+         taylor_panel_smooth, taylor_panel_e_smooth, taylor_simple) %>% 
+  filter(key %in% c("r", "taylor_panel", 
+                    "taylor_panel_smooth", "taylor_simple")) %>% 
+    mutate(key = case_when(key == "r" ~ "Interest rate",
+                           key == "taylor_simple" ~ "Simple rule",
+                           key == "taylor_panel" ~ "Empirical rule",
+                           key == "taylor_panel_smooth" ~ "Empirical with IR smoothing")) %>%     
+  ggplot(aes(x = date, y = value, color = key)) +
+  geom_line(size = .75) +
+  facet_wrap(~country, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Interest rate and Taylor rules - Panel rules") +
+  theme(legend.position = "bottom")
+
+
+  pdata %>% 
+    gather(key = "key", value = "value", r, taylor_panel, taylor_panel_e,
+           taylor_panel_smooth, taylor_panel_e_smooth, taylor_simple) %>% 
+    filter(key %in% c("taylor_panel", "taylor_panel_e", 
+                      "taylor_panel_smooth", "taylor_panel_e_smooth")) %>% 
+    mutate(key = case_when(key == "taylor_panel" ~ "Empirical rule",
+                           key == "taylor_panel_e" ~ "Empirical with exchange rate",
+                           key == "taylor_panel_smooth" ~ "Empirical with IR smoothing",
+                           key == "taylor_panel_e_smooth" ~ "Empirical with exchange rate and IR smoothing")) %>% 
+    ggplot(aes(x = date, y = value, color = key)) +
+    geom_line(size = .75) +
+    facet_wrap(~country, scales = "free") +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("Interest rate and Taylor rules - panel and exchange rate" ) +
+    theme(legend.position = "bottom")
+  
+
+
+```

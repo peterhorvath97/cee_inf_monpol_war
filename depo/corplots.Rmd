@@ -1,0 +1,50 @@
+---
+title: "Inflation correlation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      error = FALSE,
+                      message = FALSE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(fredr)
+library(lubridate)
+library(corrplot)
+library(Hmisc)
+library(ggcorrplot)
+
+#data issues
+data <- read_rds("df_all.rds")
+
+for(i in 2022:2010 ) {
+  
+plot <- data %>% 
+    filter(description == "CPI") %>% 
+    select(country = iso2c, date, value) %>% 
+    group_by(country) %>% 
+    mutate(value = value - lag(value)) %>% 
+    ungroup() %>% 
+    spread(country, value) %>% 
+    mutate(year = year(date)) %>% 
+    filter(year == i) %>% 
+    select(-date, - year) %>%
+    drop_na() %>% 
+    cor(method = "pearson") %>% 
+    ggcorrplot(
+      colors = c("red", "white", "green"),
+      lab = TRUE) +
+    ggtitle(paste("Inflation correlation plot of year ", i)) 
+
+print(plot)
+}
+
+
+```
+

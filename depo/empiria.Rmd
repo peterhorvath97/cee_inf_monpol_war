@@ -1,0 +1,426 @@
+---
+title: "empiria"
+author: "Horváth Péter"
+output: html_document
+---
+
+```{r setup, include=FALSE,}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, error = FALSE, message = FALSE)
+```
+
+# Taylor szabály becslés
+
+Taylor szabály becslése, egyszerű VAR modellel országonként. 
+GDP, CPI, REER és kamat változókat használom. A kamat ahol elérhető volt, ott az IMF-es adatbázis policy rate-je, amennyiben pedig nem, abban az esetben az OECD short term interest rate-et használtam. Litvánia problémás, a kettő közül egyikre sincs adat.
+
+A VAR modelleket országonként becsültem, 1 késleltetéssel és a szintben mért változókkal. Az alábbiakban láthatóak a valós és becsült adatok, valamint a kamatok esetén a reziduumok (így két ábrán is látszik a taylor szabály szerinti kamattól vett eltérés).
+
+```{r}
+library(tidyverse)
+library(fredr)
+library(lubridate)
+
+#data issues
+df_all <- read_rds("df_all.rds")
+month_quarter <- tibble(month = 1:12) %>% 
+  mutate(quarter = case_when(month %in% 1:3 ~ 1,
+                             month %in% 4:6 ~ 2,
+                             month %in% 7:9 ~ 3,
+                             month %in% 10:12 ~ 4))
+
+data <-df_all %>% group_by(iso2c) %>% nest() %>% 
+  mutate(data = case_when(iso2c %in% c("BG", "CZ", "HU", "PL", "RO") ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Policy rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c %in% c("EE", "LV", "SI", "SK") ~ 
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Short term interest rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "LT" ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Treasury rate", 
+                                                                     "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "Global" ~
+                            map(data, ~filter(.x, description %in% c("Energy Price Index", "Geopolitical Risk Index")) %>% mutate(freq = "M"))
+  ) 
+  ) %>% 
+  mutate(data = map(data, ~mutate(.x, year = year(date),
+                                  month = month(date)) %>% 
+                      left_join(month_quarter, by = "month") %>% 
+                      group_by(indicator, quarter, year) %>% 
+                      mutate(val = mean(value),
+                             name = case_when(description == "CPI" ~ "pi", 
+                                              description == "GDP" ~ "y",
+                                              description == "Policy rate" ~ "r",
+                                              description == "Short term interest rate" ~ "r",
+                                              description == "Treasury rate" ~ "r",
+                                              description == "Real Effective Exchange Rate" ~ "e",
+                                              description == "Wages and salaries, Index, B-S" ~ "w",
+                                              description == "Energy Price Index" ~ "gep",
+                                              description == "Geopolitical Risk Index" ~  "gpr")) %>% 
+                      ungroup() %>% 
+                      distinct(indicator, quarter, year, .keep_all = TRUE) %>% 
+                      dplyr::select(date, val, name) %>% 
+                      spread(name, val) %>% 
+                      drop_na()
+  ))
+
+
+data <- data %>% filter(iso2c != "Global") %>% 
+  unnest(data) %>% ungroup()
+
+data <- data %>% mutate(year = year(date)) %>% 
+  left_join(data %>% mutate(year = year(date)) %>% 
+              group_by(iso2c, year) %>% 
+              summarize(mean_y = mean(y)) %>% 
+              filter(year == 2010) %>% ungroup(),
+            by = "iso2c") %>% 
+  mutate(y = 100*y/mean_y) %>% 
+  dplyr::select(-starts_with('year'), -mean_y) %>% 
+  rename(country = iso2c) %>% group_by(country) %>% 
+#  mutate(y = y - lag(y), 
+#         pi = pi - lag(pi), 
+#         e = e - lag(e)) %>% 
+  ungroup() %>% 
+  drop_na()
+
+
+
+data_taylor <- data %>% 
+  dplyr::select(country, date, y, pi, r, e) %>%
+  group_by(country) %>% 
+  nest() %>% 
+  mutate(data = map(data, ~dplyr::select(.x, -date) %>% ts()))
+
+library(vars)
+
+data_taylor <- data_taylor %>% mutate(var = map(data, ~VAR(.x, p = 1, type = "const")),
+                                      fitted = map(var, ~fitted(.x)))
+
+
+actual <- data_taylor %>% arrange(country) %>% 
+  dplyr::select(country, data) %>% 
+  mutate(data = map(data, ~as_tibble(.x))) %>% 
+  unnest(data) %>%
+  bind_cols(data %>% arrange(country) %>% dplyr::select(date)) %>% 
+  mutate(type = "actual")
+
+fitted <- data_taylor %>% arrange(country) %>% 
+  dplyr::select(country, fitted) %>% 
+  mutate(fitted = map(fitted, ~as_tibble(.x))) %>% 
+  unnest(fitted) %>%
+  group_by(country) %>% 
+  group_modify(~ add_row(.x,.before=0)) %>% 
+  ungroup() %>% 
+  bind_cols(data %>% arrange(country) %>% dplyr::select(date)) %>% 
+  mutate(type = "fitted") %>% 
+  drop_na()
+
+
+
+bind_rows(actual, fitted) %>% 
+  ggplot(aes(x = date, y = r, color = type)) +
+  geom_line(linewidth = .8) +
+  facet_wrap(~country, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("actual", "fitted"),
+                     values = c("darkblue", "red")) +
+  ggtitle("Actual interest rates versus implied interest rates")
+  
+
+bind_rows(actual, fitted) %>% 
+  ggplot(aes(x = date, y = y, color = type)) +
+  geom_line(linewidth = .8) +
+  facet_wrap(~country, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("actual", "fitted"),
+                     values = c("darkblue", "red")) +
+  ggtitle("Actual GDP versus implied GDP")
+
+bind_rows(actual, fitted) %>% 
+  ggplot(aes(x = date, y = pi, color = type)) +
+  geom_line(linewidth = .8) +
+  facet_wrap(~country, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("actual", "fitted"),
+                     values = c("darkblue", "red")) +
+  ggtitle("Actual CPI versus implied CPI")
+
+bind_rows(actual, fitted) %>% 
+  ggplot(aes(x = date, y = e, color = type)) +
+  geom_line(linewidth = .8) +
+  facet_wrap(~country, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("actual", "fitted"),
+                     values = c("darkblue", "red")) +
+  ggtitle("Actual REER versus implied REER")
+
+
+bind_rows(actual, fitted) %>% 
+  dplyr::select(country, date, r, type) %>% 
+  spread(key = "type", value = "r") %>% 
+  mutate(deviation = actual - fitted) %>% 
+  ggplot(aes(x = date, y = deviation)) +
+  geom_line() +
+  facet_wrap(~country, scales = "free") +
+  theme_minimal() +
+  ggtitle("Deviation from Taylor rule interest rate (residuals)")
+
+```
+
+
+# Inflációs folyamatok
+
+1. próba - külön VAR modellek országonként - probléma: inkonzisztens a globális változók sokkjai országok között, illetve az impulzus válaszok enblock is elég "össze-vissza" képet festenek
+2. próba - panel VAR - egyelőre még nem találtam példát ami alapján replikálni tudnék országonként impulzus válaszokat belőle, amit gyárilag tud a szoftver az egy átlagos impulse response 
+
+```{r}
+library(tidyverse)
+library(fredr)
+library(lubridate)
+
+#data issues
+df_all <- read_rds("df_all.rds")
+month_quarter <- tibble(month = 1:12) %>% 
+  mutate(quarter = case_when(month %in% 1:3 ~ 1,
+                             month %in% 4:6 ~ 2,
+                             month %in% 7:9 ~ 3,
+                             month %in% 10:12 ~ 4))
+
+data <-df_all %>% group_by(iso2c) %>% nest() %>% 
+  mutate(data = case_when(iso2c %in% c("BG", "CZ", "HU", "PL", "RO") ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Policy rate", 
+                                                                    "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c %in% c("EE", "LV", "SI", "SK") ~ 
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Short term interest rate", 
+                                                                    "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "LT" ~
+                            map(data, ~filter(.x, description %in% c("CPI", "GDP", "Treasury rate", 
+                                                                    "Real Effective Exchange Rate", "Wages and salaries, Index, B-S"))),
+                          iso2c == "Global" ~
+                            map(data, ~filter(.x, description %in% c("Energy Price Index", "Geopolitical Risk Index")) %>% mutate(freq = "M"))
+                            ) 
+         ) %>% 
+  mutate(data = map(data, ~mutate(.x, year = year(date),
+                                  month = month(date)) %>% 
+                      left_join(month_quarter, by = "month") %>% 
+                      group_by(indicator, quarter, year) %>% 
+                      mutate(val = mean(value),
+                             name = case_when(description == "CPI" ~ "pi", 
+                                              description == "GDP" ~ "y",
+                                              description == "Policy rate" ~ "r",
+                                              description == "Short term interest rate" ~ "r",
+                                              description == "Treasury rate" ~ "r",
+                                              description == "Real Effective Exchange Rate" ~ "e",
+                                              description == "Wages and salaries, Index, B-S" ~ "w",
+                                              description == "Energy Price Index" ~ "gep",
+                                              description == "Geopolitical Risk Index" ~  "gpr")) %>% 
+                      ungroup() %>% 
+                      distinct(indicator, quarter, year, .keep_all = TRUE) %>% 
+                      dplyr::select(date, val, name) %>% 
+                      spread(name, val) %>% 
+                      drop_na()
+                    ))
+
+global <- data %>% filter(iso2c == "Global") %>% unnest(data) %>% ungroup %>% dplyr::select(-iso2c)
+
+data <- data %>% filter(iso2c != "Global") %>% 
+  mutate(data = map(data, ~inner_join(.x, global, by = "date"))) %>% 
+  unnest(data)
+
+
+data <- data %>% mutate(year = year(date)) %>% 
+  left_join(data %>% mutate(year = year(date)) %>% 
+                              group_by(iso2c, year) %>% 
+                              summarize(mean_y = mean(y)) %>% 
+                              filter(year == 2010) %>% ungroup(),
+                            by = "iso2c") %>% 
+  mutate(y = 100*y/mean_y) %>% 
+  dplyr::select(-starts_with('year'), -mean_y) %>% 
+  rename(country = iso2c) %>% ungroup()
+
+ 
+
+
+
+
+#country-wise var attempt
+library(vars)
+amat <- matrix(nrow = 7, ncol = 7, 0)
+amat[lower.tri(amat)] <- NA
+diag(amat) <- 1
+amat
+
+irf_tib <- function(irf, length){
+  for(i in 1:length(irf$irf %>% names())) {
+    irf$irf[[i]] <- irf$irf[[i]] %>% as_tibble() %>% 
+      mutate(shock = names(irf$irf)[i]) %>% 
+      bind_cols(t = 1:(length+1)) %>% 
+      gather(key = "var", value = "irf", -shock, -t)
+    
+    irf$Upper[[i]] <- irf$Upper[[i]] %>% as_tibble() %>% 
+      mutate(shock = names(irf$irf)[i]) %>% 
+      bind_cols(t = 1:(length+1)) %>% 
+      gather(key = "var", value = "upper", -shock, -t)
+    
+    irf$Lower[[i]] <- irf$Lower[[i]] %>% as_tibble() %>% 
+      mutate(shock = names(irf$irf)[i]) %>% 
+      bind_cols(t = 1:(length+1)) %>% 
+      gather(key = "var", value = "lower", -shock, -t)
+  }
+  
+  
+  bind_rows(irf$irf) %>% 
+    left_join(bind_rows(irf$Upper), by = c("shock", "t", "var")) %>% 
+    left_join(bind_rows(irf$Lower), by = c("shock", "t", "var"))
+  
+}
+
+
+x <- data %>% 
+  group_by(country) %>%
+  mutate(across(.cols = c(y, pi, e, w, gep, gpr), .fns = ~log(.x))) %>% 
+  mutate(across(.cols = c(y, pi), .fns = ~.x - lag(.x))) %>% 
+  drop_na() %>% 
+  nest() %>% 
+  mutate(data = map(data, ~dplyr::select(.x, -date) %>% 
+                      dplyr::select(gpr, gep, e, pi, y, w, r) %>% 
+                      ts()),
+         var = map(data, ~VAR(.x, p = 1, type = "const")),
+         svar = map(var, ~SVAR(.x, estmethod = "scoring", Amat = amat)),
+         sum = map(var, ~summary(.x)),
+         cov_norm = map(sum, ~.x$covres/diag(.x$covres)),
+         shock = map(sum, ~t(chol(.x$covres))/diag(t(chol(.x$covres)))),
+         resid = map(var, ~resid(.x)),
+         fitted = map(var, ~fitted(.x)),
+         irf = map(svar, ~irf(.x, 
+                             impulse = c("gpr", "gep", "e", "pi", "y", "w", "r"),
+                             response = c("gpr", "gep", "e", "pi", "y", "w", "r"),
+                             n.ahead = 20,
+                             boot = TRUE) %>% irf_tib(length = 20))) 
+
+
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "gpr") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+#  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Geopolitical risk shock")
+
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "gep") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Energy price shock")
+
+
+
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "y") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("GDP shock (demand)")
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "pi") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Inflation shock (supply)")
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "e") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Exchange rate shock")
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "r") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Interest rate shock")
+
+x %>% 
+  dplyr::select(country, irf) %>% 
+  unnest(irf) %>% 
+  filter(shock == "w") %>% 
+  ggplot(aes(x = t, y = irf, #ymin = lower, ymax = upper, 
+             color = country, fill = country)) +
+  geom_line(linewidth = .75) +
+  #  geom_ribbon(linetype = "dashed", alpha = 0) +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal() +
+  scale_color_manual(breaks = c("BG", "CZ", "EE", "HU", "LT", "PL", "RO", "SI", "SK"),
+                     values = RColorBrewer::brewer.pal(9, name = "Spectral")) +
+  ggtitle("Wage shock")
+
+
+#Panel var attempt
+library(panelvar)
+panel <- data %>% mutate(date = as.numeric(date)) %>% 
+  as.data.frame()
+
+mod_ols <- pvarfeols(dependent_vars = c("y", "pi", "r", "e", "w", "gep", "gpr"),
+                     lags = 1,
+                     exog_vars = c("gep", "gpr"),
+                     transformation = "fd",
+                     data = panel,
+                     panel_identifier = c("country", "date")
+)
+
+
+panelvar::girf(mod_ols, n.ahead = 20, ma_approx_steps = 20) %>% plot()
+#panelvar::oirf(mod_ols, n.ahead = 20) %>% plot()
+
+```
+
+
+
+
