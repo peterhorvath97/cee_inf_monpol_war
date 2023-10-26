@@ -4,9 +4,9 @@ library(lubridate)
 library(shiny)
 library(shinydashboard)
 
-df <- readRDS("df.rds")
-gpr <- readRDS("gpr.rds")
-energy <- readRDS("energy.rds")
+df <- readRDS("depo/shiny_dashboard/df.rds")
+gpr <- readRDS("depo/shiny_dashboard/gpr.rds")
+energy <- readRDS("depo/shiny_dashboard/energy.rds")
 
 mon <- df %>% filter(str_detect(description, "rate")) %>% 
   rename(date = year_month) %>% 
