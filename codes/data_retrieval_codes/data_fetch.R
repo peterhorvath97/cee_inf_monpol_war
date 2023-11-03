@@ -3,7 +3,6 @@ library(imfr)
 library(fredr)
 library(OECD)
 library(eurostat)
-library(Rblpapi)
 
 library(httr)
 library(readxl)
