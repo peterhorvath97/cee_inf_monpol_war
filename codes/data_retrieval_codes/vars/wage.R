@@ -38,27 +38,27 @@ wage <- wage %>%
   mutate(wage = wage/gdp_defl) %>% 
   select(-gdp_defl)
  
-wage <- wage %>% 
-  group_by(country) %>% 
-  mutate(min = min(date),
-         max = max(date)) %>% 
-  distinct(country, .keep_all = T) %>% 
-  select(min, max) %>% 
-  mutate(range = seq(min, max, by = '1 month') %>% 
-           as.character() %>% 
-           paste(collapse = ',')) %>% 
-  separate_rows(range, sep = ',') %>% 
-  select(country, date = range) %>% 
-  mutate(date = as_date(date)) %>% 
-  left_join(wage) %>% 
-  mutate(year = year(date),
-         quarter = quarter(date)) %>% 
-  group_by(country, year, quarter) %>% 
-  mutate(wage_q = mean(wage, na.rm = T)) %>% 
-  ungroup(year, quarter) %>% 
-  mutate(wage = zoo::na.spline(wage, na.rm = TRUE)) %>% 
-  select(country, date, wage) %>% 
-  ungroup()
+#wage <- wage %>% 
+#  group_by(country) %>% 
+#  mutate(min = min(date),
+#         max = max(date)) %>% 
+#  distinct(country, .keep_all = T) %>% 
+#  select(min, max) %>% 
+#  mutate(range = seq(min, max, by = '1 month') %>% 
+#           as.character() %>% 
+#           paste(collapse = ',')) %>% 
+#  separate_rows(range, sep = ',') %>% 
+#  select(country, date = range) %>% 
+#  mutate(date = as_date(date)) %>% 
+#  left_join(wage) %>% 
+#  mutate(year = year(date),
+#         quarter = quarter(date)) %>% 
+#  group_by(country, year, quarter) %>% 
+#  mutate(wage_q = mean(wage, na.rm = T)) %>% 
+#  ungroup(year, quarter) %>% 
+#  mutate(wage = zoo::na.spline(wage, na.rm = TRUE)) %>% 
+#  select(country, date, wage) %>% 
+#  ungroup()
  
 
 saveRDS(wage, file.path(fold_data, 'wage.rds')) 

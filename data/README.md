@@ -13,8 +13,8 @@ countries](README_files/figure-gfm/unnamed-chunk-1-1.png)
 
 # GDP
 
-Quarterly Real GDP in national currency, seasonally adjusted, retrieved
-from the IMF IFS database.
+Quarterly Real GDP chained volumes, seasonally adjusted, retrieved from
+Eurostat.
 
 ![GDP in the CEE
 countries](README_files/figure-gfm/unnamed-chunk-2-1.png)
@@ -56,8 +56,7 @@ countries](README_files/figure-gfm/unnamed-chunk-6-1.png)
 
 Quarterly real wage rate indices, seasonally and calendar adjusted,
 measured as wage growth of sectors B-S, adjusted for inflation using GDP
-deflator, retrieved from Eurostat. The series are interpolated from
-quarterly to monthly frequency using spline interpolation.
+deflator, retrieved from Eurostat.
 
 ![Wage rates in the CEE
 countries](README_files/figure-gfm/unnamed-chunk-7-1.png)
