@@ -15,10 +15,10 @@ wage <- wage %>%
 gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>% 
   filter(geo %in% ccodes,
          s_adj == 'SCA',
-         unit  %in%  c('CP_MEUR', 'CLV15_MEUR'),
+         unit  %in%  c('CP_MNAC', 'CLV15_MNAC'),
          na_item == 'B1GQ') %>% 
   select(ccode2 = geo, date = time, values, unit) %>% 
-  mutate(unit = ifelse(unit == 'CP_MEUR', 'Nominal', 'Real')) %>% 
+  mutate(unit = ifelse(unit == 'CP_MNAC', 'Nominal', 'Real')) %>% 
   spread(unit, values) %>% 
   mutate(gdp_defl = Nominal/Real) %>% 
   inner_join(countries) %>% 

@@ -1,11 +1,12 @@
 gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>% 
   filter(geo %in% ccodes,
          s_adj == 'SCA',
-         unit  =='CLV15_MEUR',
+         unit  =='CLV15_MNAC',
          na_item == 'B1GQ') %>% 
   select(ccode2 = geo, date = time, gdp = values) %>% 
   inner_join(countries, by = 'ccode2') %>% 
-  select(country, date, gdp)
+  select(country, date, gdp) %>% 
+  arrange(country, date)
 
 gdp <- gdp %>% 
   mutate(year = year(date)) %>% 
@@ -22,3 +23,5 @@ gdp <- gdp %>%
 
 saveRDS(gdp, file.path(fold_data, 'gdp.rds'))
 rm(gdp)
+
+
