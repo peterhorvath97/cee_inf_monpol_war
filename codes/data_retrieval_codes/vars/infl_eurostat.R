@@ -3,7 +3,7 @@ infl <- get_eurostat('prc_hicp_midx', select_time = 'M')
 infl <- infl %>% 
   filter(unit == 'I15') %>% 
   select(ccode2 = geo,
-         date = time,
+         date = TIME_PERIOD,
          coicop,
          value = values) %>% 
   inner_join(countries) %>% 

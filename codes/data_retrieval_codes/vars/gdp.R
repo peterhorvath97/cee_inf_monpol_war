@@ -3,7 +3,7 @@ gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>%
          s_adj == 'SCA',
          unit  =='CLV15_MNAC',
          na_item == 'B1GQ') %>% 
-  select(ccode2 = geo, date = time, gdp = values) %>% 
+  select(ccode2 = geo, date = TIME_PERIOD, gdp = values) %>% 
   inner_join(countries, by = 'ccode2') %>% 
   select(country, date, gdp) %>% 
   arrange(country, date)

@@ -6,7 +6,7 @@ wage <- wage %>%
          lcstruct == 'D11',
          unit == 'I20') %>%
   select(wage = values,
-         date = time,
+         date = TIME_PERIOD,
          ccode2 = geo) %>% 
   inner_join(countries, by = 'ccode2') %>% 
   select(country, date, wage) 
@@ -17,7 +17,7 @@ gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>%
          s_adj == 'SCA',
          unit  %in%  c('CP_MNAC', 'CLV15_MNAC'),
          na_item == 'B1GQ') %>% 
-  select(ccode2 = geo, date = time, values, unit) %>% 
+  select(ccode2 = geo, date = TIME_PERIOD, values, unit) %>% 
   mutate(unit = ifelse(unit == 'CP_MNAC', 'Nominal', 'Real')) %>% 
   spread(unit, values) %>% 
   mutate(gdp_defl = Nominal/Real) %>% 

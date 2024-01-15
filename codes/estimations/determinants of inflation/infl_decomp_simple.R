@@ -2,7 +2,7 @@ infl <- read_rds(file.path(folder_input, 'infls_eurostat.rds'))
 
 mod <- infl %>% 
   group_by(country, coicop) %>% 
-  mutate(value = value - dplyr::lag(value, 12)) %>% 
+  mutate(value = 100*(value/dplyr::lag(value, 12)-1)) %>% 
   spread(coicop, value) %>% 
   drop_na() %>% 
   ungroup() %>% 
@@ -13,7 +13,7 @@ summary(mod)
   
 infl <- infl %>% 
   group_by(country, coicop) %>% 
-  mutate(value = value - dplyr::lag(value, 12)) %>% 
+  mutate(value = 100*(value/dplyr::lag(value, 12)-1)) %>% 
   spread(coicop, value) %>% 
   drop_na() %>% 
   ungroup() %>% 
@@ -69,6 +69,7 @@ infl_plot <- infl %>%
   facet_wrap(~country, scales = 'free_x'
              ) +
   theme_minimal() +
+  theme(legend.position = 'bottom') +
   scale_fill_brewer(palette = 'Dark2', 'Contribution to\nheadline inflation', direction = -1) +
   labs(x = '',
        y = '')
@@ -83,6 +84,7 @@ infl_plot_freey <- infl %>%
   facet_wrap(~country, scales = 'free'
   ) +
   theme_minimal() +
+  theme(legend.position = 'bottom') +
   scale_fill_brewer(palette = 'Dark2', 'Contribution to\nheadline inflation', direction = -1) +
   labs(x = '',
        y = '')

@@ -1,7 +1,7 @@
 read_rds(file.path(folder_input, 'infls_eurostat.rds')) %>% 
   filter(year(date) > 2020) %>% 
   group_by(country, coicop) %>% 
-  mutate(value = value - lag(value, 12)) %>% 
+  mutate(value = 100*(value/lag(value, 12)-1)) %>% 
   drop_na() %>% 
   ungroup(coicop) %>% 
   spread(coicop, value) %>% 

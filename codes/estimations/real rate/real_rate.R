@@ -1,5 +1,7 @@
 intrate <- read_rds(file.path(folder_input, 'intrate.rds'))
-inflation <- read_rds(file.path(folder_input, 'inflation.rds'))
+inflation <- read_rds(file.path(folder_input, 'infls_eurostat.rds')) %>% 
+  spread(coicop, value) %>% 
+  select(country, date, cpi = CP00)
 
 
 real_rate <- intrate %>% 
@@ -14,10 +16,11 @@ real_rate <- intrate %>%
   filter(month %in% c(1, 4, 7, 10)) %>% 
   ungroup() %>% 
   group_by(country) %>% 
-  mutate(cpi = cpi - lag(cpi, 4)) %>% 
+  mutate(cpi = 100*(cpi/lag(cpi, 4)-1)) %>% 
   drop_na() %>% 
   mutate(r = r - lead(cpi)) %>% 
-  select(country, date, r)
+  select(country, date, r) %>% 
+  filter(country != 'Romania' | (country == 'Romania' & year(date) >= 1999))
 
 real_rate %>% 
   ggplot(aes(x = date, y = r)) +

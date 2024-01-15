@@ -4,7 +4,7 @@ read_rds(file.path(folder_input, 'gdp.rds')) %>%
   group_by(country) %>% 
   mutate(gap2 = mFilter::hpfilter(ts(gdp), freq = 4 )$cycle,
          gap1 = hp_one_sided(ts(gdp), 4, 4)$cycle) %>% 
-  mutate(gdp = gdp-lag(gdp, 4)) %>% 
+  mutate(gdp = 100*(gdp/lag(gdp, 4)-1)) %>% 
   filter(year(date) >= 2020) %>% 
   gather(side, value, starts_with('gap'), gdp) %>% 
   mutate(side = case_when(side == 'gdp' ~ 'GDP growth',
