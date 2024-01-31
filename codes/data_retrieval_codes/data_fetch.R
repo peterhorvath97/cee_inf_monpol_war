@@ -1,6 +1,5 @@
 #devtools::install_github("christophergandrud/imfr")
 library(imfr)
-library(fredr)
 library(OECD)
 library(eurostat)
 
@@ -25,31 +24,6 @@ fold_varcodes <- 'codes/data_retrieval_codes/vars'
 fold_data <- 'data/input'
 fold_datasource <- 'data/source'
 
-fredr_set_key("cda47ae66b38ed7988c0a9c2ec80c94f")
-
-fred_query <- function(ids, freq, start){
-  
-  require(fredr)
-  require(dplyr)
-  require(purrr)
-  
-  #download data
-  params <- list(
-    series_id = ids,
-    frequency = freq,
-    observation_start = as.Date(start)
-  )
-  
-  
-  data  <- pmap_dfr(
-    .l = params,
-    .f = ~ fredr(series_id = .x, frequency = .y) ) %>%
-    dplyr::select(date, series_id, value) %>%
-    spread(key = series_id, value = value) %>%
-    drop_na() 
-  
-  data
-}
 
 x13adj <- function(value, freq, date){
   require(forecast)

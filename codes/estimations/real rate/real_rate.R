@@ -22,16 +22,6 @@ real_rate <- intrate %>%
   select(country, date, r) %>% 
   filter(country != 'Romania' | (country == 'Romania' & year(date) >= 1999))
 
-real_rate %>% 
-  ggplot(aes(x = date, y = r)) +
-  geom_line(linewidth = .75)+
-  facet_wrap(~country, scales = 'free_x') +
-  theme_minimal() +
-  labs(x = '', 
-       y = '')
-
-ggsave(file.path(folder_output, 'real rate', 'real_rates.png'), dpi = 1000)
-
 source(file.path(folder_estcodes, 'real rate', 'hp_one_sided.R'))
 
 real_rate <- real_rate %>% 
@@ -46,39 +36,43 @@ saveRDS(real_rate, file.path(folder_output, 'real rate', 'real_rate.rds'))
 
 
 real_rate %>% 
-  select(country, date, r_trend1, r_trend2) %>% 
-  gather(filter, value, starts_with('r')) %>% 
-  mutate(filter = case_when(filter == 'r_trend1' ~ 'One-sided HP',
-                            filter == 'r_trend2' ~ 'Two-sided HP')) %>% 
-  ggplot(aes(x = date, y = value, color = filter)) +
+  select(country, date, req = r_trend1) %>% 
+  left_join(countrycode::codelist %>% 
+              select(country = country.name.en, ccode2 = iso2c)) %>% 
+  mutate(country = ccode2) %>%   
+  ggplot(aes(x = date, y = req)) +
   geom_line(linewidth = .75) +
-  facet_wrap(~country, scales = 'free') +
-  theme_minimal() +
+  facet_wrap(~country, ncol = 2, scales = 'free_x') +
+  theme_minimal(base_size = 16, base_family = 'Times New Roman') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.title = element_blank(),
         legend.position = 'bottom') +
   labs(x = '',
        y = '') +
-  scale_color_manual(breaks = c('One-sided HP', 'Two-sided HP'),
-                     values = c('red', 'darkblue'))
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))  
 
-ggsave(file.path(folder_output, 'real rate', 'real_rate_trends.png'), dpi = 1000)
+ggsave(file.path(chartout, 'eqrates.png'), dpi = 1000)
+
 
 
 real_rate %>% 
-  select(country, date, r_cycle1, r_cycle2) %>% 
-  gather(filter, value, starts_with('r')) %>% 
-  mutate(filter = case_when(filter == 'r_cycle1' ~ 'One-sided HP',
-                            filter == 'r_cycle2' ~ 'Two-sided HP')) %>% 
-  ggplot(aes(x = date, y = value, color = filter)) +
+  select(country, date, rgap = r_cycle1) %>% 
+  filter(year(date) >= 2021) %>% 
+  left_join(countrycode::codelist %>% 
+              select(country = country.name.en, ccode2 = iso2c)) %>% 
+  mutate(country = ccode2) %>%  
+  ggplot(aes(x = date, y = rgap)) +
   geom_line(linewidth = .75) +
-  facet_wrap(~country, scales = 'free') +
-  theme_minimal() +
+  geom_hline(aes(yintercept = 0), color = 'red') +
+  facet_wrap(~country, ncol = 2, scales = 'free_x') +
+  theme_minimal(base_size = 16, base_family = 'Times New Roman') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.title = element_blank(),
         legend.position = 'bottom') +
   labs(x = '',
        y = '') +
-  scale_color_manual(breaks = c('One-sided HP', 'Two-sided HP'),
-                     values = c('red', 'darkblue'))
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(folder_output, 'real rate', 'real_rate_deviations.png'), dpi = 1000)
+ggsave(file.path(chartout, 'rgap.png'), dpi = 1000)
 
+rm(intrate, inflation, real_rate)

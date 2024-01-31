@@ -1,15 +1,38 @@
-wage <- get_eurostat('lc_lci_r2_q', select_time = 'Q')
+wage <- eurostat::get_eurostat("NAMQ_10_A10" %>% tolower(), select_time = "Q") %>% 
+  filter(geo %in% ccodes,
+         unit == 'CP_MEUR',
+         s_adj == 'SCA',
+         na_item == 'D11',
+         nace_r2 %in% c('B-E', 'F', 'G-I', 'J', 'K', 'L', 'M_N')) %>% 
+  select(ccode2 = geo,
+         date = TIME_PERIOD,
+         values) %>%
+  group_by(ccode2, date) %>% 
+  summarize(values = sum(values)) %>%
+  ungroup() %>% 
+  mutate(values = values * 1000000) %>% 
+  rename(wage = values)
+
+empl <- eurostat::get_eurostat("NAMQ_10_A10_E" %>% tolower(), select_time = "Q") %>% 
+  filter(geo %in% ccodes,
+         s_adj == 'SCA',
+         na_item == 'EMP_DC',
+         unit == 'THS_HW',
+         nace_r2 %in% c('B-E', 'F', 'G-I', 'J', 'K', 'L', 'M_N')) %>% 
+  select(ccode2 = geo,
+         date = TIME_PERIOD,
+         values) %>%
+  group_by(ccode2, date) %>% 
+  summarize(values = sum(values)) %>%
+  ungroup() %>% 
+  mutate(values = values * 1000) %>% 
+  rename(hw = values)
 
 wage <- wage %>% 
-  filter(s_adj == 'SCA',
-         nace_r2 == 'B-S',
-         lcstruct == 'D11',
-         unit == 'I20') %>%
-  select(wage = values,
-         date = TIME_PERIOD,
-         ccode2 = geo) %>% 
+  inner_join(empl) %>% 
+  mutate(wage = wage/hw) %>% 
   inner_join(countries, by = 'ccode2') %>% 
-  select(country, date, wage) 
+  select(country, date, wage)
 
 
 gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>% 
@@ -25,6 +48,8 @@ gdp <- get_eurostat('namq_10_gdp', select_time = 'Q') %>%
   select(country, date, gdp_defl)
 
 wage <- wage %>% 
+  inner_join(gdp) %>% 
+  mutate(wage = wage / gdp_defl) %>% 
   mutate(year = year(date),
          is2015 = ifelse(year == 2015, 1, NA)) %>% 
   group_by(country, year) %>% 
@@ -34,32 +59,8 @@ wage <- wage %>%
          wage = 100*wage/mwage) %>% 
   ungroup() %>% 
   select(country, date, wage) %>% 
-  inner_join(gdp) %>% 
-  mutate(wage = wage/gdp_defl) %>% 
-  select(-gdp_defl)
- 
-#wage <- wage %>% 
-#  group_by(country) %>% 
-#  mutate(min = min(date),
-#         max = max(date)) %>% 
-#  distinct(country, .keep_all = T) %>% 
-#  select(min, max) %>% 
-#  mutate(range = seq(min, max, by = '1 month') %>% 
-#           as.character() %>% 
-#           paste(collapse = ',')) %>% 
-#  separate_rows(range, sep = ',') %>% 
-#  select(country, date = range) %>% 
-#  mutate(date = as_date(date)) %>% 
-#  left_join(wage) %>% 
-#  mutate(year = year(date),
-#         quarter = quarter(date)) %>% 
-#  group_by(country, year, quarter) %>% 
-#  mutate(wage_q = mean(wage, na.rm = T)) %>% 
-#  ungroup(year, quarter) %>% 
-#  mutate(wage = zoo::na.spline(wage, na.rm = TRUE)) %>% 
-#  select(country, date, wage) %>% 
-#  ungroup()
- 
-
+  filter(year(date) >= 2001)  
+  
 saveRDS(wage, file.path(fold_data, 'wage.rds')) 
-rm(wage, gdp)
+rm(wage, empl, gdp)
+  

@@ -62,34 +62,73 @@ tibble(var = names(mod$coefficients),
 
 saveRDS(infl, file.path(folder_output, 'determinants of inflation', 'infl_decomp.rds'))
 
-infl_plot <- infl %>% 
+
+infl %>% 
+  filter(country %in% c('Bulgaria', 'Croatia', 'Czechia', 'Estonia')) %>% 
+  left_join(countrycode::codelist %>% 
+              select(country = country.name.en, ccode2 = iso2c)) %>% 
+  mutate(country = ccode2) %>% 
   ggplot(aes(x = date)) +
-  geom_col(aes(y = contrib, fill = var), color = 'white') +
+  geom_col(aes(y = contrib, fill = var), color = 'white', size = .1) +
   geom_line(aes(y = CP00), linewidth = .75) + 
   facet_wrap(~country, scales = 'free_x'
-             ) +
-  theme_minimal() +
-  theme(legend.position = 'bottom') +
-  scale_fill_brewer(palette = 'Dark2', 'Contribution to\nheadline inflation', direction = -1) +
-  labs(x = '',
-       y = '')
-
-ggsave(file.path(folder_output, 'determinants of inflation', 'infl_decomp.png'), plot =infl_plot, dpi = 1000)
-
-
-infl_plot_freey <- infl %>% 
-  ggplot(aes(x = date)) +
-  geom_col(aes(y = contrib, fill = var), color = 'white') +
-  geom_line(aes(y = CP00), linewidth = .75) + 
-  facet_wrap(~country, scales = 'free'
   ) +
-  theme_minimal() +
-  theme(legend.position = 'bottom') +
-  scale_fill_brewer(palette = 'Dark2', 'Contribution to\nheadline inflation', direction = -1) +
-  labs(x = '',
-       y = '')
+  theme_minimal(base_size = 16, base_family = 'Times New Roman') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_fill_manual(breaks = c('Core Inflation', 'Food', 'Energy', 'Other factors'),
+                    values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80')) +
+  theme(legend.position = 'bottom',
+        legend.title = element_blank()) +
+  labs(x = '', y = '') +
+  scale_y_continuous(limits = c(-2, 28)) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
+  
 
-ggsave(file.path(folder_output, 'determinants of inflation', 'infl_decomp_freey.png'), plot =infl_plot_freey, dpi = 1000)
+ggsave(file.path(chartout, 'decomp1.png'), dpi = 1000)
 
 
- 
+infl %>% 
+  filter(country %in% c('Hungary', 'Latvia', 'Lithuania', 'Poland')) %>% 
+  left_join(countrycode::codelist %>% 
+              select(country = country.name.en, ccode2 = iso2c)) %>% 
+  mutate(country = ccode2) %>%  
+  ggplot(aes(x = date)) +
+  geom_col(aes(y = contrib, fill = var), color = 'white', size = .1) +
+  geom_line(aes(y = CP00), linewidth = .75) + 
+  facet_wrap(~country, scales = 'free_x'
+  ) +
+  theme_minimal(base_size = 16, base_family = 'Times New Roman') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_fill_manual(breaks = c('Core Inflation', 'Food', 'Energy', 'Other factors'),
+                    values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80'))  +
+  theme(legend.position = 'bottom',
+        legend.title = element_blank()) +
+  labs(x = '', y = '') +
+  scale_y_continuous(limits = c(-2, 28)) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
+
+ggsave(file.path(chartout, 'decomp2.png'), dpi = 1000)
+
+infl %>% 
+  filter(country %in% c('Romania', 'Serbia', 'Slovakia', 'Slovenia')) %>% 
+  left_join(countrycode::codelist %>% 
+              select(country = country.name.en, ccode2 = iso2c)) %>% 
+  mutate(country = ccode2) %>%  
+  ggplot(aes(x = date)) +
+  geom_col(aes(y = contrib, fill = var), color = 'white', size = .1) +
+  geom_line(aes(y = CP00), linewidth = .75) + 
+  facet_wrap(~country, scales = 'free_x'
+  ) +
+  theme_minimal(base_size = 16, base_family = 'Times New Roman') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_fill_manual(breaks = c('Core Inflation', 'Food', 'Energy', 'Other factors'),
+                    values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80'))  +
+  theme(legend.position = 'bottom',
+        legend.title = element_blank()) +
+  labs(x = '', y = '') +
+  scale_y_continuous(limits = c(-2, 28)) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
+
+ggsave(file.path(chartout, 'decomp3.png'), dpi = 1000)
+
+rm(mod, infl)
