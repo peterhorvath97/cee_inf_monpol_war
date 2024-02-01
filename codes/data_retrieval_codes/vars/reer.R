@@ -16,5 +16,7 @@ reer <- read_excel(file.path(fold_datasource, 'broad.xlsx'),
   inner_join(countries, by = 'ccode2') %>% 
   select(country, date, reer)
 
+
 saveRDS(reer, file.path(fold_data, 'reer.rds'))
 rm(url, reer)
+
