@@ -42,16 +42,17 @@ real_rate %>%
   mutate(country = ccode2) %>%   
   ggplot(aes(x = date, y = req)) +
   geom_line(linewidth = .75) +
-  facet_wrap(~country, ncol = 2, scales = 'free_x') +
+  facet_wrap(~country, scales = 'free_x') +
   theme_minimal(base_size = 16, base_family = 'Times New Roman') +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.title = element_blank(),
         legend.position = 'bottom') +
   labs(x = '',
-       y = '') +
-  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))  
+       y = 'Percentage points') +
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75)) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 
-ggsave(file.path(chartout, 'eqrates.png'), dpi = 1000)
+ggsave(file.path(chartout, 'eqrates.pdf'), dpi = 1000, device = cairo_pdf)
 
 
 
@@ -64,15 +65,16 @@ real_rate %>%
   ggplot(aes(x = date, y = rgap)) +
   geom_line(linewidth = .75) +
   geom_hline(aes(yintercept = 0), color = 'red') +
-  facet_wrap(~country, ncol = 2, scales = 'free_x') +
+  facet_wrap(~country, scales = 'free_x') +
   theme_minimal(base_size = 16, base_family = 'Times New Roman') +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.title = element_blank(),
         legend.position = 'bottom') +
   labs(x = '',
-       y = '') +
-  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
+       y = 'Percentage points') +
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75)) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 
-ggsave(file.path(chartout, 'rgap.png'), dpi = 1000)
+ggsave(file.path(chartout, 'rgap.pdf'), dpi = 1000, device = cairo_pdf)
 
 rm(intrate, inflation, real_rate)

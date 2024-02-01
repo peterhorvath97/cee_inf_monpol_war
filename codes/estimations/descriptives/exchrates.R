@@ -30,9 +30,9 @@ exchrates %>%
                     values = c('darkred', 'darkblue')) +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percent') +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
 
-ggsave(file.path(chartout, 'exchrates.png'), dpi = 1000)
+ggsave(file.path(chartout, 'exchrates.pdf'), dpi = 1000, device = cairo_pdf)
 rm(exchrates)

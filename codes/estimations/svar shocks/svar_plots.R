@@ -39,12 +39,12 @@ svar_shocks %>%
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percentage points') +
   scale_x_date(limits = as.Date(c("2015-01-01","2023-12-01")))+
   scale_y_continuous(limits = c(-0.03, 0.08)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(chartout, 'svar1.png'), dpi = 1000)
+ggsave(file.path(chartout, 'svar1.pdf'), dpi = 1000, device = cairo_pdf)
 
 svar_shocks %>% 
   filter(country %in% c('HU', 'LV', 'LT', 'PL')) %>% 
@@ -59,12 +59,12 @@ svar_shocks %>%
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percentage points') +
   scale_x_date(limits = as.Date(c("2015-01-01","2023-12-01")))+
   scale_y_continuous(limits = c(-0.03, 0.08)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(chartout, 'svar2.png'), dpi = 1000)
+ggsave(file.path(chartout, 'svar2.pdf'), dpi = 1000, device = cairo_pdf)
 
    
 svar_shocks %>% 
@@ -80,11 +80,11 @@ svar_shocks %>%
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percentage points') +
   scale_x_date(limits = as.Date(c("2015-01-01","2023-12-01")))+
   scale_y_continuous(limits = c(-0.03, 0.08)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(chartout, 'svar3.png'), dpi = 1000)
+ggsave(file.path(chartout, 'svar3.pdf'), dpi = 1000, device = cairo_pdf)
 
 rm(sheet, svar_shocks)

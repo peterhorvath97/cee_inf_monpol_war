@@ -18,12 +18,12 @@ ratehikes  %>%
   theme_minimal(base_size = 16, base_family = 'Times New Roman') +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
   labs(x = '', 
-       y = '') +
+       y = 'Percentage points') +
   scale_fill_distiller(direction = 1) + 
   theme(legend.position = 'none') +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
 saveRDS(ratehikes, file.path(folder_output, 'descriptives', 'ratehikes.rds'))
 
-ggsave(file.path(chartout, 'ratehikes.png'), dpi = 1000)
+ggsave(file.path(chartout, 'ratehikes.pdf'), dpi = 1000, device = cairo_pdf)
 rm(ratehikes)

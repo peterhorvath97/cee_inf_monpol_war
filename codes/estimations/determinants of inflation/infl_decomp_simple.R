@@ -79,12 +79,12 @@ infl %>%
                     values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80')) +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percent') +
   scale_y_continuous(limits = c(-2, 28)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
   
 
-ggsave(file.path(chartout, 'decomp1.png'), dpi = 1000)
+ggsave(file.path(chartout, 'decomp1.pdf'), dpi = 1000, device = cairo_pdf)
 
 
 infl %>% 
@@ -103,11 +103,11 @@ infl %>%
                     values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80'))  +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percent') +
   scale_y_continuous(limits = c(-2, 28)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(chartout, 'decomp2.png'), dpi = 1000)
+ggsave(file.path(chartout, 'decomp2.pdf'), dpi = 1000, device = cairo_pdf)
 
 infl %>% 
   filter(country %in% c('Romania', 'Serbia', 'Slovakia', 'Slovenia')) %>% 
@@ -125,10 +125,10 @@ infl %>%
                     values = c('#1f78b4', '#33a02c', '#e31a1c', 'grey80'))  +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percent') +
   scale_y_continuous(limits = c(-2, 28)) +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
-ggsave(file.path(chartout, 'decomp3.png'), dpi = 1000)
+ggsave(file.path(chartout, 'decomp3.pdf'), dpi = 1000, device = cairo_pdf)
 
 rm(mod, infl)

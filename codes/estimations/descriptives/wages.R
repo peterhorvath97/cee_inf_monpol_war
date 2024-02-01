@@ -23,10 +23,11 @@ wages %>%
                     values = c('darkred', 'darkblue'))  +
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
-  labs(x = '', y = '') +
+  labs(x = '', y = 'Percent') +
   theme(panel.border = element_rect(colour = "black", fill=NA, linewidth = .75))
 
 saveRDS(wages, file.path(folder_output, 'descriptives', 'wages.rds'))
 
-ggsave(file.path(chartout, 'wages.png'), dpi = 1000)
+ggsave(file.path(chartout, 'wages.pdf'), dpi = 1000, device = cairo_pdf)
+
 rm(wages)

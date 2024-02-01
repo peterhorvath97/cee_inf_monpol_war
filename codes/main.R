@@ -6,9 +6,11 @@ library(lubridate)
 library(rebus)
 library(ggthemes)
 library(extrafont)
+#font_import()
 loadfonts()
 library(countrycode)
 library(readxl)
+library(grDevices)
 
 
 
